@@ -14,8 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## Current Status
 
-### Latest Development Baseline
-**`v0.3.0-beta.1`**
+### Latest Stable Baseline
+**`v0.3.0`**
 
 代表：
 - 第三版 TPEx 上櫃支援主線已完成到：
@@ -38,13 +38,56 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v0.3.0] - 2026-04-22
+
+### Added
+- TWSE + TPEX 雙市場支援
+- 股票基本資料與股利資料皆支援 `market`
+- refresh API 支援 `market=TWSE|TPEX`
+
+### Changed
+- StockService 與 DividendService 升級為雙市場架構
+- repositories 以 `stock_code + market` 做資料解析
+- dividend response 納入 `market`
+
+### Validation
+- pytest: 23 passed, 2 skipped
+- TWSE / TPEX 股票與股利流程已完成第三版主線整合
+
+### Notes
+- 此版本為第三版正式版
+- `dividend_year` 目前仍維持民國年
+- `industry` 目前仍維持來源代碼
+---
 ## [Unreleased]
 
-### Planned before v0.3.0 final
-- 補 TPEX dividend 的人工 smoke 驗證
-- 更新 `README-TESTING.md`，加入雙市場（TWSE / TPEX）說明
-- 視驗證結果決定是否從 `v0.3.0-beta.1` 升版為 `v0.3.0`
-- 視需要補 `CHANGELOG` 封版 tag / release note
+### Planned after v0.3.0
+- industry 代碼轉中文
+- dividend_year 西元化
+- CI / GitHub Actions
+- scheduler / refresh log
+
+---
+## [v0.3.0] - 2026-04-22
+
+### Added
+- TWSE + TPEX 雙市場支援
+- 股票基本資料與股利資料皆支援 `market`
+- refresh API 支援 `market=TWSE|TPEX`
+
+### Changed
+- StockService 與 DividendService 升級為雙市場架構
+- repositories 以 `stock_code + market` 做資料解析
+- dividend response 納入 `market`
+
+### Validation
+- pytest: 23 passed, 2 skipped
+- TWSE / TPEX 股票與股利流程已完成第三版主線整合
+
+### Notes
+- 此版本為第三版正式版
+- `dividend_year` 目前仍維持民國年
+- `industry` 目前仍維持來源代碼
 
 ---
 
