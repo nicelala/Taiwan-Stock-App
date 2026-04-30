@@ -15,6 +15,28 @@ All notable changes to this project will be documented in this file.
 ## Current Status
 
 ### Latest Stable Baseline
+## [v0.3.1] - 2026-04-xx
+
+### Added
+- `industry_name` for stock basic responses
+- `dividend_year_ad` for dividend responses
+- GitHub Actions basic CI (`python -m pytest -q`)
+
+### Changed
+- Stock API now exposes both `industry` and `industry_name`
+- Dividend API now exposes both `dividend_year` and `dividend_year_ad`
+
+### Validation
+- pytest: 24 passed, 2 skipped
+- TWSE stock API verified
+- TPEX stock API verified
+- TWSE dividend API verified
+- TPEX dividend API verified
+
+### Notes
+- `industry` still keeps the original raw value
+- `dividend_year` still keeps ROC year format
+
 **`v0.3.0`**
 
 代表：
