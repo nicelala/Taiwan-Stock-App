@@ -119,6 +119,11 @@ API 支援：
 ### 5. 本地 SQLite 儲存
 目前預設資料庫：
 
+### 6. 新增改進功能
+- industry_name
+- dividend_year_ad
+- GitHub Actions CI
+
 ```text
 tw_dividend.db
 ```
