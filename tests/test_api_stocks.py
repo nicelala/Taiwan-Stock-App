@@ -14,6 +14,8 @@ def test_get_stock_basic_success(client, seed_stock_basic):
     assert data["market"] == "TWSE"
     assert data["company_name"] == "台灣積體電路製造股份有限公司"
     assert data["company_short_name"] == "台積電"
+    assert data["industry"] == "24"
+    assert data["industry_name"] == "半導體業"
 
 
 def test_get_stock_basic_not_found(client):
@@ -34,6 +36,7 @@ def test_get_dividends_success(client, seed_dividends):
     assert len(data["items"]) == 2
 
     assert data["items"][0]["dividend_year"] == 114
+    assert data["items"][0]["dividend_year_ad"] == 2025
     assert data["items"][0]["cash_dividend_per_share"] == "6.0000"
 
 
@@ -44,6 +47,7 @@ def test_get_dividends_filter_by_year(client, seed_dividends):
     data = resp.json()
     assert len(data["items"]) == 1
     assert data["items"][0]["dividend_year"] == 114
+    assert data["items"][0]["dividend_year_ad"] == 2025
 
 
 def test_get_dividends_invalid_year_range(client, seed_dividends):
@@ -83,6 +87,8 @@ def test_get_stock_basic_success_tpex_with_market(client, db_session):
     assert data["market"] == "TPEX"
     assert data["company_name"] == "環球晶圓股份有限公司"
     assert data["company_short_name"] == "環球晶"
+    assert data["industry"] == "24"
+    assert data["industry_name"] == "半導體業"
 
 
 def test_get_stock_basic_fallback_to_tpex_when_only_tpex_exists(client, db_session):
@@ -108,6 +114,8 @@ def test_get_stock_basic_fallback_to_tpex_when_only_tpex_exists(client, db_sessi
     data = resp.json()
     assert data["stock_code"] == "6488"
     assert data["market"] == "TPEX"
+    assert data["industry"] == "24"
+    assert data["industry_name"] == "半導體業"
 
 
 def test_get_stock_basic_multiple_market_match_returns_409(client, db_session):
@@ -210,6 +218,7 @@ def test_get_dividends_success_tpex_with_market(client, db_session):
     assert data["market"] == "TPEX"
     assert len(data["items"]) == 1
     assert data["items"][0]["dividend_year"] == 114
+    assert data["items"][0]["dividend_year_ad"] == 2025
     assert data["items"][0]["cash_dividend_per_share"] == "8.0000"
 
 
@@ -259,6 +268,7 @@ def test_get_dividends_fallback_to_tpex_when_only_tpex_exists(client, db_session
     data = resp.json()
     assert data["market"] == "TPEX"
     assert len(data["items"]) == 1
+    assert data["items"][0]["dividend_year_ad"] == 2025
 
 
 def test_get_dividends_multiple_market_match_returns_409(client, db_session):
@@ -307,3 +317,32 @@ def test_refresh_dividends_invalid_market_returns_422(client):
 
     data = resp.json()
     assert data["detail"]["code"] == "INVALID_MARKET"
+
+
+# -----------------------------
+# v0.3.1-1 新增：industry_name
+# -----------------------------
+
+def test_get_stock_basic_unknown_industry_code_returns_null_industry_name(client, db_session):
+    stock = StockBasic(
+        stock_code="5555",
+        market="TWSE",
+        company_name="未知產業測試公司",
+        company_short_name="未知產業",
+        industry="999",
+        par_value=Decimal("10.0000"),
+        listing_date=date(2024, 1, 1),
+        capital_amount=100,
+        issued_common_shares=10,
+        source_name="TEST",
+        source_url="https://example.test/unknown-industry",
+    )
+    db_session.add(stock)
+    db_session.commit()
+
+    resp = client.get("/api/v1/stocks/5555?market=TWSE")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["industry"] == "999"
+    assert data["industry_name"] is None

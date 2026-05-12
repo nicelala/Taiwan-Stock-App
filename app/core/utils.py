@@ -113,6 +113,71 @@ def fix_mojibake(value: Any) -> str | None:
     return text
 
 
+# --------------------------------------------------
+# Industry mapping
+# --------------------------------------------------
+# v0.3.1-1 先採最小可用版本：
+# - 保留原本 industry 原始值
+# - 新增 industry_name
+# - 目前先內建已驗證會用到的產業代碼
+# - 後續若你要完整擴充，只需往這個字典補
+INDUSTRY_NAME_MAP: dict[str, str] = {
+    "24": "半導體業",
+}
+
+
+def get_industry_name(industry_value: Any) -> str | None:
+    """
+    將產業代碼 / 原始值轉成中文名稱。
+
+    規則：
+    - None / 空值 -> None
+    - 若本來就是中文 -> 直接回傳
+    - 若是代碼 -> 查 INDUSTRY_NAME_MAP
+    - 查不到 -> None
+    """
+    if industry_value is None:
+        return None
+
+    text = str(industry_value).strip()
+    if not text:
+        return None
+
+    # 如果原始值本來就是中文，直接當作 industry_name
+    if any("\u4e00" <= ch <= "\u9fff" for ch in text):
+        return text
+
+    return INDUSTRY_NAME_MAP.get(text)
+
+
+def get_ad_year(year_value: Any) -> int | None:
+    """
+    將可能為民國年 / 西元年的年度值轉成西元年。
+
+    規則：
+    - None / 空值 -> None
+    - 小於 1911 -> 視為民國年，加 1911
+    - 大於等於 1911 -> 視為已經是西元年
+    - 無法轉 int -> None
+    """
+    if year_value is None:
+        return None
+
+    text = str(year_value).strip()
+    if not text or text in ("-", "--", "None", "N/A"):
+        return None
+
+    try:
+        year_int = int(text)
+    except Exception:
+        return None
+
+    if year_int < 1911:
+        return year_int + 1911
+
+    return year_int
+
+
 def now_utc() -> datetime:
     """
     以新的寫法取得 UTC 時間，並維持 naive UTC datetime，

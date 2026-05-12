@@ -1,659 +1,271 @@
-# Taiwan Stock Dividend API
+# Taiwan Stock App
 
-一個以 **FastAPI + SQLite** 為核心的台股股利 / 股票基本資料查詢專案。  
-目前支援：
+台股資料查詢與管理工具，支援 **TWSE / TPEX** 雙市場，提供：
 
-- **TWSE（上市）**
-- **TPEX（上櫃）**
+- 股票搜尋
+- 股利篩選 / 排行
+- 個股股利查詢
+- Refresh Logs 管理頁
+- Scheduler 管理頁
 
-可提供：
+目前架構採用：
 
-- 股票基本資料查詢
-- 歷年股利查詢
-- 本地 SQLite 儲存
-- 手動 refresh 官方資料
-- pytest 測試
-- Windows PowerShell 測試腳本
-
----
-
-## 專案狀態
-
-### 目前版本
-**`v0.3.0`**
-
-### 目前能力
-- ✅ TWSE 股票基本資料
-- ✅ TWSE 股利資料
-- ✅ TPEX 股票基本資料
-- ✅ TPEX 股利資料
-- ✅ `market` 參數支援
-- ✅ SQLite 本地資料庫
-- ✅ FastAPI API
-- ✅ pytest 測試
-- ✅ PowerShell 測試腳本
-
-### 目前測試基線
-```text
-23 passed, 2 skipped
-```
-
-### 備註
-此版本為目前正式穩定版，代表：
-- TWSE + TPEX 雙市場功能已完成
-- 股票與股利 API 已整合
-- pytest 測試已通過
+- **Backend**：FastAPI + SQLAlchemy + pytest
+- **Frontend**：React + Vite + TypeScript + React Router
+- **Data Flow**：透過 refresh / scheduler 將資料同步到本地 DB，前端僅查本地 API，不直接向外部資料來源查詢
 
 ---
 
-## 專案目標
+## 功能總覽
 
-這個專案不是單純做「股利排行網站」，而是建立一套**可維護、可測試、可擴充的本地資料能力**，讓你可以：
+### 使用者功能
 
-- 建立自己的 SQLite 股利資料庫
-- 提供自己的 API
-- 自訂資料欄位與命名規則
-- 不依賴單一第三方網站頁面
-- 未來可接前端 / Excel / Power BI / 自動化工具 / 回測流程
+- **股票搜尋頁**：`/stocks`
+  - 依股票代號、公司名稱、公司簡稱搜尋
+  - 支援 `TWSE / TPEX` 市場篩選
+  - 查詢條件同步到 URL query params
 
----
+- **股利篩選 / 排行頁**：`/dividends`
+  - 支援依市場、年度、現金股利 / 股票股利 / 總股利條件篩選
+  - 支援排序、分頁、每頁筆數切換
+  - 查詢條件與分頁狀態同步到 URL query params
 
-## 核心功能
+- **個股股利頁**：`/stocks/:stockCode/dividends`
+  - 由股票搜尋頁直接導流
+  - 依個股查詢股利資料
+  - 支援 `year_from / year_to` 篩選
 
-### 1. 股票基本資料查詢
-可查詢：
+### 管理功能
 
-- 股票代號
-- 市場（TWSE / TPEX）
-- 公司名稱
-- 公司簡稱
-- 產業別
-- 每股面額
-- 實收資本額
-- 已發行普通股數
-- 上市 / 上櫃日期
+- **Refresh Logs 頁**：`/admin/refresh-logs`
+  - 查看股票 / 股利 refresh 歷史紀錄
+  - 支援依 `job_name / market / status` 篩選
+  - 支援簡單分頁
 
----
-
-### 2. 歷年股利查詢
-可查詢：
-
-- 股利年度
-- 期別
-- 決議狀態
-- 董事會決議日
-- 股東會日期
-- 現金股利（元/股）
-- 股票股利（元/股）
-- 總股利（元/股）
-- 股票股利率（若可推算）
-
----
-
-### 3. 官方資料手動 refresh
-支援：
-
-- `TWSE`
-- `TPEX`
-
-可個別刷新：
-
-- 股票基本資料
-- 股利資料
-
----
-
-### 4. 雙市場查詢
-API 支援：
-
-- `market=TWSE`
-- `market=TPEX`
-
-若不指定 market：
-- 會依系統邏輯做 fallback
-- 若同代號跨市場同時存在且無法唯一判定，會回：
-  - `409 MULTIPLE_MARKET_MATCH`
-
----
-
-### 5. 本地 SQLite 儲存
-目前預設資料庫：
-
-### 6. 新增改進功能
-- industry_name
-- dividend_year_ad
-- GitHub Actions CI
-
-```text
-tw_dividend.db
-```
-
-這讓你可以：
-- 本地保存資料
-- 重複 refresh
-- 保留自己的資料口徑
-- 後續擴充到其他 DB（例如 PostgreSQL）
+- **Scheduler 頁**：`/admin/scheduler`
+  - 查看 scheduler 狀態
+  - 查看 scheduler jobs
+  - 支援：
+    - Pause / Resume 整體 scheduler
+    - Pause / Resume 單一 job
+    - Run Now 單一 job
 
 ---
 
 ## 技術架構
 
-### 後端
+### Backend
+
 - FastAPI
 - SQLAlchemy
-- Pydantic
-- requests
-
-### 資料庫
-- SQLite
-
-### 測試
 - pytest
-- FastAPI TestClient
+- APScheduler（scheduler / jobs / run-now / pause / resume）
+- 本地 DB 儲存 stocks / dividends / refresh logs
 
-### 工具鏈
-- PowerShell 測試腳本
-- CHANGELOG
-- README-TESTING
+### Frontend
 
----
+- React
+- Vite
+- TypeScript
+- React Router
+- 以本地 API 為唯一資料來源
 
-## 支援市場與資料範圍
+### Data Flow
 
-| 市場 | 股票基本資料 | 股利資料 | 狀態 |
-|------|--------------|----------|------|
-| TWSE | ✅ | ✅ | 已完成 |
-| TPEX | ✅ | ✅ | 已完成（beta 驗證中） |
-
----
-
-## 專案結構
-
-```text
-tw_dividend_mvp/
-├─ app/
-│  ├─ __init__.py
-│  ├─ main.py
-│  ├─ core/
-│  │  ├─ __init__.py
-│  │  ├─ config.py
-│  │  └─ utils.py
-│  ├─ db/
-│  │  ├─ __init__.py
-│  │  ├─ base.py
-│  │  ├─ session.py
-│  │  └─ init_db.py
-│  ├─ models/
-│  │  ├─ __init__.py
-│  │  ├─ stock_basic.py
-│  │  └─ dividend_history.py
-│  ├─ schemas/
-│  │  ├─ __init__.py
-│  │  ├─ stock.py
-│  │  └─ dividend.py
-│  ├─ crawlers/
-│  │  ├─ __init__.py
-│  │  ├─ twse_client.py
-│  │  └─ tpex_client.py
-│  ├─ repositories/
-│  │  ├─ __init__.py
-│  │  ├─ stock_repository.py
-│  │  └─ dividend_repository.py
-│  ├─ services/
-│  │  ├─ __init__.py
-│  │  ├─ stock_service.py
-│  │  └─ dividend_service.py
-│  └─ api/
-│     ├─ __init__.py
-│     ├─ deps.py
-│     └─ routes.py
-├─ tests/
-├─ scripts/
-├─ requirements.txt
-├─ .env.example
-├─ README.md
-├─ README-TESTING.md
-└─ CHANGELOG.md
-```
+1. 後端透過 refresh API 或 scheduler 同步 TWSE / TPEX 資料到本地 DB
+2. 前端查詢 `/api/v1/...` 本地 API
+3. 管理頁面查看 refresh logs 與 scheduler 狀態
 
 ---
 
-## 快速開始
+## 後端 API 概覽
 
-### 1. 建立虛擬環境
+### Stock APIs
 
-```powershell
-python -m venv .venv312
-```
+- `GET /api/v1/stocks/search`
+- `GET /api/v1/stocks/{stock_code}`
 
-啟用（Windows PowerShell）：
+### Dividend APIs
+
+- `GET /api/v1/dividends/search`
+- `GET /api/v1/stocks/{stock_code}/dividends`
+
+### Admin Refresh APIs
+
+- `POST /api/v1/admin/refresh/stocks`
+- `POST /api/v1/admin/refresh/dividends`
+- `GET /api/v1/admin/refresh/logs`
+
+### Scheduler APIs
+
+- `GET /api/v1/admin/scheduler/status`
+- `GET /api/v1/admin/scheduler/jobs`
+- `POST /api/v1/admin/scheduler/pause`
+- `POST /api/v1/admin/scheduler/resume`
+- `POST /api/v1/admin/scheduler/jobs/{job_id}/pause`
+- `POST /api/v1/admin/scheduler/jobs/{job_id}/resume`
+- `POST /api/v1/admin/scheduler/jobs/{job_id}/run-now`
+
+---
+
+## 前端頁面概覽
+
+### 使用者頁
+
+- `/stocks`
+- `/dividends`
+- `/stocks/:stockCode/dividends`
+
+### 管理頁
+
+- `/admin/refresh-logs`
+- `/admin/scheduler`
+
+---
+
+## 如何啟動後端
+
+### 1. 啟用 Python 虛擬環境
 
 ```powershell
 .\.venv312\Scripts\Activate.ps1
 ```
 
----
-
-### 2. 安裝依賴
+### 2. 安裝依賴（若尚未安裝）
 
 ```powershell
 pip install -r requirements.txt
 ```
 
----
-
-### 3. 建立 `.env`
-
-把 `.env.example` 複製成 `.env`
-
-```powershell
-Copy-Item .env.example .env
-```
-
----
-
-### 4. 啟動 API
+### 3. 啟動 FastAPI
 
 ```powershell
 uvicorn app.main:app --reload
 ```
 
-Swagger UI：
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
-
-## 建議第一次使用流程
-
-### Step 1：刷新 TWSE 股票基本資料
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/stocks?market=TWSE"
-```
-
----
-
-### Step 2：刷新 TPEX 股票基本資料
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/stocks?market=TPEX"
-```
-
----
-
-### Step 3：刷新 TWSE 股利資料
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/dividends?market=TWSE"
-```
-
----
-
-### Step 4：刷新 TPEX 股利資料
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/dividends?market=TPEX"
-```
-
----
-
-## API 範例
-
-### 健康檢查
-
-```http
-GET /healthz
-```
-
-PowerShell：
+### 4. 驗證後端
 
 ```powershell
 (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/healthz").Content
 ```
 
----
+預期：
 
-### 查詢 TWSE 股票基本資料
-
-```http
-GET /api/v1/stocks/2330?market=TWSE
-```
-
-PowerShell：
-
-```powershell
-(Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/api/v1/stocks/2330?market=TWSE").Content
-```
-
----
-
-### 查詢 TPEX 股票基本資料
-
-```http
-GET /api/v1/stocks/6488?market=TPEX
-```
-
-PowerShell：
-
-```powershell
-(Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/api/v1/stocks/6488?market=TPEX").Content
-```
-
----
-
-### 不指定 market（系統 fallback）
-
-```http
-GET /api/v1/stocks/6488
-```
-
-PowerShell：
-
-```powershell
-(Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/api/v1/stocks/6488").Content
-```
-
----
-
-### 查詢 TWSE 股利資料
-
-```http
-GET /api/v1/stocks/2330/dividends?market=TWSE
-```
-
-PowerShell：
-
-```powershell
-(Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/api/v1/stocks/2330/dividends?market=TWSE").Content
-```
-
----
-
-### 查詢 TPEX 股利資料
-
-```http
-GET /api/v1/stocks/6488/dividends?market=TPEX
-```
-
-PowerShell：
-
-```powershell
-(Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/api/v1/stocks/6488/dividends?market=TPEX").Content
-```
-
----
-
-### 依年份篩選股利資料
-
-```http
-GET /api/v1/stocks/2330/dividends?market=TWSE&year_from=113&year_to=114
-```
-
----
-
-## API 設計說明
-
-### 股票基本資料
-```http
-GET /api/v1/stocks/{stock_code}
-```
-
-支援參數：
-- `market=TWSE|TPEX`
-- `fetch_remote=true|false`
-
----
-
-### 股利資料
-```http
-GET /api/v1/stocks/{stock_code}/dividends
-```
-
-支援參數：
-- `market=TWSE|TPEX`
-- `year_from`
-- `year_to`
-- `fetch_remote=true|false`
-
----
-
-### Refresh 股票基本資料
-```http
-POST /api/v1/admin/refresh/stocks?market=TWSE
-POST /api/v1/admin/refresh/stocks?market=TPEX
-```
-
----
-
-### Refresh 股利資料
-```http
-POST /api/v1/admin/refresh/dividends?market=TWSE
-POST /api/v1/admin/refresh/dividends?market=TPEX
-```
-
----
-
-## 錯誤碼設計
-
-常見錯誤碼：
-
-- `STOCK_NOT_FOUND`
-- `INVALID_MARKET`
-- `INVALID_YEAR_RANGE`
-- `MULTIPLE_MARKET_MATCH`
-
-### 例如：市場參數錯誤
 ```json
-{
-  "detail": {
-    "code": "INVALID_MARKET",
-    "message": "market must be TWSE or TPEX"
-  }
-}
-```
-
-### 例如：同代號跨市場歧義
-```json
-{
-  "detail": {
-    "code": "MULTIPLE_MARKET_MATCH",
-    "message": "stock_code=xxxx exists in multiple markets, please specify ?market=TWSE or ?market=TPEX"
-  }
-}
+{"status":"ok"}
 ```
 
 ---
 
-## 測試
+## 如何啟動前端
 
-### 直接跑 pytest
+### 1. 進入前端專案資料夾
+
 ```powershell
-python -m pytest -q
+cd "D:\Py_code\Taiwan Stock App\taiwan-stock-frontend"
 ```
 
-### 詳細輸出
+### 2. 安裝依賴
+
 ```powershell
-python -m pytest -v
+npm install
 ```
 
-### 目前預期
-```text
-23 passed, 2 skipped
+### 3. 設定 `.env`
+
+建立 `taiwan-stock-frontend/.env`：
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
----
+### 4. 啟動前端
 
-## PowerShell 測試腳本
+```powershell
+npm run dev
+```
 
-專案內建：
+預設網址：
 
 ```text
-scripts/
-├─ run_tests.ps1
-├─ run_integration.ps1
-├─ smoke_api.ps1
-└─ run_all.ps1
-```
-
-### 跑單元測試
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run_tests.ps1
-```
-
-### 跑 API smoke test
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\smoke_api.ps1
-```
-
-### 一鍵全跑
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
+http://localhost:5173/
 ```
 
 ---
 
-## 文件
+## 初始化資料（重要）
 
-### 測試文件
-詳細測試方式請看：
+前端查詢的是 **本地 DB**，因此第一次使用前，建議先完成初始化 refresh。
+
+### 建議初始化順序
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/stocks?market=TWSE"
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/stocks?market=TPEX"
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/dividends?market=TWSE"
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/admin/refresh/dividends?market=TPEX"
+```
+
+### 為什麼要先做？
+
+如果本地 DB 尚未初始化：
+
+- `/stocks` 可能查不到完整股票資料
+- `/dividends` 可能查不到完整股利資料
+- `/stocks/:stockCode/dividends` 可能只顯示空狀態
+
+---
+
+## 已完成的產品能力
+
+### 資料能力
+
+- TWSE / TPEX 雙市場
+- 股票搜尋 API
+- 股利篩選 / 排行 API
+- 個股股利 API
+- `industry_name`
+- `dividend_year_ad`
+
+### 維運能力
+
+- 手動 refresh
+- refresh logs
+- scheduler 狀態 / jobs 查詢
+- scheduler control（pause / resume / run-now）
+
+### 前端能力
+
+- React Router
+- 使用者頁 + 管理頁
+- URL query params 同步
+- 股利分頁
+- Scheduler 管理頁
+
+---
+
+## 專案結構（摘要）
 
 ```text
-README-TESTING.md
-```
-
-### 版本紀錄
-版本變更請看：
-
-```text
-CHANGELOG.md
-```
-
----
-
-## 目前限制
-
-### 1. `dividend_year` 仍維持民國年
-例如：
-
-- `114`
-- `113`
-
-目前尚未統一轉成西元年。
-
----
-
-### 2. `industry` 目前仍為來源代碼
-例如：
-
-- `"24"`
-
-尚未做：
-- 產業代碼 → 中文產業名稱映射
-
----
-
-### 3. 目前仍以 SQLite 為主
-這是 MVP 設計，未來可擴充到：
-
-- PostgreSQL
-- MySQL
-- 其他正式 DB
-
----
-
-### 4. 第三版已正式發布為 v0.3.0
-雖然：
-- stock / dividend 的雙市場 pytest 已通過
-- API 路由已完成
-
-但若要正式對外標成 `v0.3.0`，仍建議補最後一輪人工 smoke 驗證。
-
----
-
-## 為什麼要自己做，而不是只看網站？
-
-如果你只是要手動看股利排行，第三方網站很方便。  
-但這個專案的目標不是單純「看網站」，而是建立你自己的：
-
-- 資料主權
-- SQLite 資料庫
-- API
-- refresh 流程
-- 測試能力
-- 版本控管
-- 後續擴充基礎
-
-也就是說，這個專案的定位不是複製一個網站頁面，而是建立**自己的資料與服務底層**。
-
----
-
-## Roadmap
-
-### 短期
-- 補齊 TPEX 股利人工 smoke 驗證
-- 將 `v0.3.0-beta.1` 升為 `v0.3.0`
-- 更新 README / TESTING / CHANGELOG 封版內容
-
-### 中期
-- 產業代碼轉中文
-- `dividend_year` 西元化
-- coverage 報告
-- CI（GitHub Actions / Azure DevOps）
-
-### 長期
-- PostgreSQL
-- 排程 refresh
-- 前端查詢頁
-- 策略 / 選股 / 匯出功能
-
----
-
-## 建議日常使用方式
-
-### 平常開發
-```powershell
-python -m pytest -q
-```
-
-### 想快速檢查 API
-先啟動：
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-再跑：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\smoke_api.ps1
-```
-
-### 發版前
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run_all.ps1
+Taiwan Stock App/
+├─ app/                        # FastAPI backend
+├─ tests/                      # backend tests
+├─ taiwan-stock-frontend/      # React frontend
+│  ├─ src/
+│  │  ├─ pages/
+│  │  ├─ components/
+│  │  ├─ services/
+│  │  └─ types/
+│  └─ .env
+└─ README.md
 ```
 
 ---
 
-## License
+## 未來規劃
 
-目前尚未正式定義。  
-若之後要公開 GitHub repo，建議補上：
-
-- MIT
-- Apache-2.0
-- 或你自己的內部使用聲明
-
----
-
-## Author / Maintenance
-
-目前為內部開發 / 個人維護型專案。  
-若未來公開，建議補：
-
-- 維護者資訊
-- 回報 issue 流程
-- Release 節奏
+- 股票搜尋頁分頁
+- 匯出 CSV / Excel
+- Admin 導覽整理
+- UI / Layout 美化
+- 文件與 release 收斂

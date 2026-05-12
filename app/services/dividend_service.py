@@ -11,9 +11,11 @@ from app.core.utils import (
     split_code_and_name,
     get_first,
     fix_mojibake,
+    get_ad_year,
 )
 from app.repositories.dividend_repository import DividendRepository
 from app.repositories.stock_repository import StockRepository
+from app.repositories.refresh_job_log_repository import RefreshJobLogRepository
 from app.services.stock_service import StockService
 
 
@@ -24,6 +26,7 @@ class DividendService:
         self.db = db
         self.repo = DividendRepository(db)
         self.stock_repo = StockRepository(db)
+        self.log_repo = RefreshJobLogRepository(db)
         self.stock_service = StockService(db)
         self.twse_client = TWSEClient()
         self.tpex_client = TPExClient()
@@ -36,46 +39,65 @@ class DividendService:
         year_to: int | None = None,
     ):
         resolved_market = self._resolve_market(stock_code, market)
-        return self.repo.list_by_stock_code(stock_code, resolved_market, year_from, year_to)
+        rows = self.repo.list_by_stock_code(stock_code, resolved_market, year_from, year_to)
+        return self._attach_derived_fields_list(rows)
 
-    def sync_from_source(self, market: str) -> dict:
-        market = market.upper()
-        self._validate_market(market)
+    def sync_from_source(self, market: str, trigger_source: str = "api") -> dict:
+        market_text = str(market or "").strip().upper()
+        log = self.log_repo.create_running(
+            job_name="refresh_dividends",
+            market=market_text or "UNKNOWN",
+            trigger_source=trigger_source,
+        )
 
-        rows = self._fetch_dividend_rows(market)
-        inserted_or_updated = 0
-        skipped = 0
+        try:
+            self._validate_market(market_text)
 
-        for raw in rows:
-            normalized = self._normalize_dividend_row(raw, market)
-            if normalized is None:
-                skipped += 1
-                continue
+            rows = self._fetch_dividend_rows(market_text)
+            inserted_or_updated = 0
+            skipped = 0
 
-            stock = self.stock_repo.get_by_code(normalized["stock_code"], market)
-            if stock is None:
-                skipped += 1
-                continue
+            for raw in rows:
+                normalized = self._normalize_dividend_row(raw, market_text)
+                if normalized is None:
+                    skipped += 1
+                    continue
 
-            normalized["stock_id"] = stock.id
-            self.repo.upsert_one(normalized)
-            inserted_or_updated += 1
+                stock = self.stock_repo.get_by_code(normalized["stock_code"], market_text)
+                if stock is None:
+                    skipped += 1
+                    continue
 
-        self.db.commit()
+                normalized["stock_id"] = stock.id
+                self.repo.upsert_one(normalized)
+                inserted_or_updated += 1
 
-        return {
-            "status": "success",
-            "market": market,
-            "count": inserted_or_updated,
-            "skipped": skipped,
-        }
+            self.db.commit()
+
+            self.log_repo.mark_success(
+                log_id=log.id,
+                inserted_or_updated_count=inserted_or_updated,
+                skipped_count=skipped,
+            )
+
+            return {
+                "status": "success",
+                "market": market_text,
+                "count": inserted_or_updated,
+                "skipped": skipped,
+            }
+
+        except Exception as exc:
+            self.db.rollback()
+            self.log_repo.mark_failed(log.id, str(exc))
+            raise
 
     def sync_one_if_missing(self, stock_code: str, market: str | None = None):
         resolved_market = self._resolve_market(stock_code, market, allow_missing=True)
 
         rows = self.repo.list_by_stock_code(stock_code, resolved_market)
         if rows:
-            return rows
+            return self._attach_derived_fields_list(rows)
 
         # 若股票基本資料尚未存在，先補股票基本資料
         stock = self.stock_repo.get_by_code(stock_code, resolved_market)
@@ -83,7 +105,8 @@ class DividendService:
             self.stock_service.sync_from_source(resolved_market)
 
         self.sync_from_source(resolved_market)
-        return self.repo.list_by_stock_code(stock_code, resolved_market)
+        rows = self.repo.list_by_stock_code(stock_code, resolved_market)
+        return self._attach_derived_fields_list(rows)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -115,7 +138,7 @@ class DividendService:
 
         raise ValueError("STOCK_NOT_FOUND")
 
-    def _fetch_dividend_rows(self, market: str) -> list[dict]:
+    def _fetch_dividend_rows(self, market: str) -> list:
         if market == "TWSE":
             return self.twse_client.fetch_dividend_all()
         if market == "TPEX":
@@ -261,3 +284,16 @@ class DividendService:
             "source_url": source_url,
             "biz_key": biz_key,
         }
+
+    def _attach_derived_fields(self, obj):
+        """
+        不改 DB schema，僅在回傳 ORM 物件前補上衍生欄位。
+        """
+        if obj is None:
+            return None
+
+        obj.dividend_year_ad = get_ad_year(obj.dividend_year)
+        return obj
+
+    def _attach_derived_fields_list(self, rows: list):
+        return [self._attach_derived_fields(row) for row in rows]

@@ -1,250 +1,155 @@
 # CHANGELOG
 
-All notable changes to this project will be documented in this file.
-
-> 版本規則（本專案採用）
->
-> - `v0.1.x`：早期規劃與原型
-> - `v0.2.0`：第二版穩定基線（FastAPI + SQLite + TWSE only）
-> - `v0.3.0-beta.x`：第三版開發驗證階段（TPEx 支援已導入、待最終人工驗證）
-> - `v0.3.0`：第三版正式版（TWSE + TPEX 雙市場完成）
-> - `v0.3.x`：第三版後續修正與增量版本
+本檔案記錄 Taiwan Stock App 的重要版本變更。
 
 ---
 
-## Current Status
+## v0.4.1
 
-### Latest Stable Baseline
-## [v0.3.1] - 2026-04-xx
+### 主題
+Dividend Search / Filter API 與前端股利頁強化
 
 ### Added
-- `industry_name` for stock basic responses
-- `dividend_year_ad` for dividend responses
-- GitHub Actions basic CI (`python -m pytest -q`)
+- 新增 `GET /api/v1/dividends/search`
+- 支援依 `market / year / cash_min / stock_min / total_min` 篩選
+- 支援依 `cash / stock / total / year / code` 排序
+- 回傳 `industry_name`
+- 回傳 `dividend_year_ad`
+- 新增 `total_count`，支援真正分頁
 
-### Changed
-- Stock API now exposes both `industry` and `industry_name`
-- Dividend API now exposes both `dividend_year` and `dividend_year_ad`
-
-### Validation
-- pytest: 24 passed, 2 skipped
-- TWSE stock API verified
-- TPEX stock API verified
-- TWSE dividend API verified
-- TPEX dividend API verified
-
-### Notes
-- `industry` still keeps the original raw value
-- `dividend_year` still keeps ROC year format
-
-**`v0.3.0`**
-
-代表：
-- 第三版 TPEx 上櫃支援主線已完成到：
-  - Batch 2-1：StockService
-  - Batch 2-2：DividendService
-- pytest 結果：
-  - `23 passed, 2 skipped`
-- 雙市場（`TWSE` / `TPEX`）的股票與股利 API 已完成程式層與測試層整合
-- 尚待最終人工驗證：
-  - `POST /api/v1/admin/refresh/dividends?market=TPEX`
-  - `GET /api/v1/stocks/{stock_code}/dividends?market=TPEX`
-
-### Latest Stable Baseline
-**`v0.2.0`**
-
-代表：
-- 第二版穩定基線
-- TWSE only
-- SQLite + FastAPI + pytest + PowerShell 測試腳本已可用
+### Frontend
+- 新增 `/dividends` 頁
+- 支援股利篩選 / 排行
+- 支援分頁與每頁筆數切換
+- 支援 URL query params 同步：
+  - `market`
+  - `year`
+  - `cash_min`
+  - `stock_min`
+  - `total_min`
+  - `sort_by`
+  - `sort_dir`
+  - `page`
+  - `page_size`
 
 ---
 
-## [v0.3.0] - 2026-04-22
+## v0.4.0
+
+### 主題
+Stock Search API
 
 ### Added
-- TWSE + TPEX 雙市場支援
-- 股票基本資料與股利資料皆支援 `market`
-- refresh API 支援 `market=TWSE|TPEX`
+- 新增 `GET /api/v1/stocks/search`
+- 支援：
+  - 股票代號 prefix 搜尋
+  - 公司名稱搜尋
+  - 公司簡稱搜尋
+  - `market` 篩選
+- 搜尋結果回傳摘要型股票資訊：
+  - `stock_code`
+  - `market`
+  - `company_name`
+  - `company_short_name`
+  - `industry`
+  - `industry_name`
+  - `listing_date`
 
-### Changed
-- StockService 與 DividendService 升級為雙市場架構
-- repositories 以 `stock_code + market` 做資料解析
-- dividend response 納入 `market`
-
-### Validation
-- pytest: 23 passed, 2 skipped
-- TWSE / TPEX 股票與股利流程已完成第三版主線整合
-
-### Notes
-- 此版本為第三版正式版
-- `dividend_year` 目前仍維持民國年
-- `industry` 目前仍維持來源代碼
----
-## [Unreleased]
-
-### Planned after v0.3.0
-- industry 代碼轉中文
-- dividend_year 西元化
-- CI / GitHub Actions
-- scheduler / refresh log
+### Frontend
+- 新增 `/stocks` 頁
+- 支援股票搜尋
+- 支援 `q / market` 同步到 URL query params
+- 股票搜尋結果可導向個股股利頁
 
 ---
-## [v0.3.0] - 2026-04-22
+
+## v0.3.4
+
+### 主題
+Scheduler Control APIs
 
 ### Added
-- TWSE + TPEX 雙市場支援
-- 股票基本資料與股利資料皆支援 `market`
-- refresh API 支援 `market=TWSE|TPEX`
+- 新增 `POST /api/v1/admin/scheduler/pause`
+- 新增 `POST /api/v1/admin/scheduler/resume`
+- 新增 `POST /api/v1/admin/scheduler/jobs/{job_id}/pause`
+- 新增 `POST /api/v1/admin/scheduler/jobs/{job_id}/resume`
+- 新增 `POST /api/v1/admin/scheduler/jobs/{job_id}/run-now`
+- scheduler jobs API 新增 `paused` 狀態
+- `run-now` 會寫入 `trigger_source = api_manual`
 
-### Changed
-- StockService 與 DividendService 升級為雙市場架構
-- repositories 以 `stock_code + market` 做資料解析
-- dividend response 納入 `market`
-
-### Validation
-- pytest: 23 passed, 2 skipped
-- TWSE / TPEX 股票與股利流程已完成第三版主線整合
-
-### Notes
-- 此版本為第三版正式版
-- `dividend_year` 目前仍維持民國年
-- `industry` 目前仍維持來源代碼
+### Frontend
+- 新增 `/admin/scheduler` 頁
+- 可查看 scheduler 狀態與 jobs 清單
+- 可執行 pause / resume / run-now
 
 ---
 
-## [v0.3.0-beta.1] - 2026-04-22
+## v0.3.3
+
+### 主題
+Scheduler Foundation
 
 ### Added
-- 新增 **TPEx 上櫃股票基本資料** 支援
-- 新增 **TPEx 上櫃股利資料** 支援
-- 新增 `TPExClient`
-- 新增雙市場（`TWSE` / `TPEX`）股票查詢能力
-- 新增雙市場（`TWSE` / `TPEX`）股利查詢能力
-- 新增 `market` query param 支援：
-  - `GET /api/v1/stocks/{stock_code}?market=TWSE|TPEX`
-  - `GET /api/v1/stocks/{stock_code}/dividends?market=TWSE|TPEX`
-  - `POST /api/v1/admin/refresh/stocks?market=TWSE|TPEX`
-  - `POST /api/v1/admin/refresh/dividends?market=TWSE|TPEX`
-- 新增 TPEX 測試案例：
-  - stock API
-  - dividend API
-  - repository 雙市場支援
-- 新增可選整合測試：
-  - `tests/integration/test_tpex_live.py`
-
-### Changed
-- `StockService` 從單一市場升級為雙市場路由邏輯
-- `DividendService` 從單一市場升級為雙市場路由邏輯
-- `StockRepository.get_by_code()` 改為顯式接受 `market`
-- `StockRepository` 新增 `list_by_code()`，供跨市場查詢 / fallback / 衝突判定
-- `DividendRepository.list_by_stock_code()` 改為顯式接受 `market`
-- `DividendListResponse` 新增 `market` 欄位
-- stock / dividend API route 與 refresh route 全面支援 `market`
-
-### Fixed
-- 修正 repository 原本硬綁 `TWSE` 導致 `TPEX` 無法查詢的限制
-- 修正 stock query 在雙市場下的 fallback / ambiguous match 行為
-- 修正 dividend query 在雙市場下的 market resolution 行為
-- 修正同股票代號跨市場共存時的 API 歧義問題，加入：
-  - `409 MULTIPLE_MARKET_MATCH`
-- 修正 TPEX crawler / service 串接流程，使其與既有 TWSE 分層一致
-
-### Validation
-- pytest 結果：
-  - `23 passed, 2 skipped`
-- 已驗證：
-  - `refresh/stocks?market=TWSE`
-  - `refresh/stocks?market=TPEX`
-  - `GET /stocks/{stock_code}?market=TPEX`
-  - `GET /stocks/{stock_code}` fallback 到 TPEX
-- 待人工驗證：
-  - `refresh/dividends?market=TPEX`
-  - `GET /stocks/{stock_code}/dividends?market=TPEX`
-
-### Notes
-- 第三版資料來源策略：
-  - TWSE：官方 OpenAPI / 開放資料
-  - TPEX：官方開放資料 / CSV 為主
-- `dividend_year` 目前仍維持 **民國年**
-- `industry` 目前仍維持來源代碼（例如 `"24"`）
-- 第三版的重點是：
-  - 在不推翻第二版架構下，擴充為雙市場共用系統
-  - 保持 SQLite MVP / FastAPI / pytest / PowerShell 工具鏈可持續使用
+- 建立 scheduler 啟動 / 關閉流程
+- 註冊 scheduler jobs
+- 新增 `GET /api/v1/admin/scheduler/status`
+- 新增 `GET /api/v1/admin/scheduler/jobs`
+- 支援 scheduler startup / shutdown
 
 ---
 
-## [v0.2.0] - 2026-04-22
+## v0.3.2
+
+### 主題
+Refresh Job Logs
 
 ### Added
-- 建立 **FastAPI + SQLite** 的單機 MVP 專案骨架
-- 建立 `stock_basic`、`dividend_history` 等核心資料表
-- 建立 `TWSEClient`，可抓取：
-  - 上市公司基本資料
-  - 上市公司股利分派資料
-- 建立 `StockService` / `DividendService`
-- 建立股票基本資料 API
-- 建立股利查詢 API
-- 建立手動 refresh API
-- 建立 pytest 測試骨架
-- 建立 PowerShell 測試腳本：
-  - `run_tests.ps1`
-  - `run_integration.ps1`
-  - `smoke_api.ps1`
-  - `run_all.ps1`
-- 建立 `README-TESTING.md`
+- 新增 refresh job log table
+- 記錄 refresh jobs 執行結果
+- 新增 `GET /api/v1/admin/refresh/logs`
+- 支援依 `job_name / market / status` 篩選
 
-### Changed
-- API 回應改為明確使用 UTF-8 JSON response
-- 增加 `Content-Type: application/json; charset=utf-8`
-- 將 `FastAPI startup on_event` 改為 `lifespan`
-- 將 `datetime.utcnow()` 替換為較新寫法，避免 Python 3.12 deprecation warning
-- `run_tests.ps1` 改為：
-  - 優先使用專案內 `.venv312`
-  - 若不存在，fallback 到目前 shell 的 `python`
-
-### Fixed
-- 修正 `dividend_service.py` 字串未結束造成的 `SyntaxError`
-- 修正 PowerShell 下 `curl -X POST ...` 不適用問題，改以 `Invoke-RestMethod` / `curl.exe` 測試
-- 修正 API 中文亂碼問題：
-  - 後端 response header 明確指定 UTF-8
-  - PowerShell 使用 `.Content` 驗證原始 JSON
-- 修正 SQLite 測試 DB 在 Windows 下 teardown 時的 `WinError 32` 檔案鎖定問題：
-  - 增加 `close_all_sessions()`
-  - `engine.dispose()`
-  - `gc.collect()`
-  - retry 刪檔機制
-- 修正 `run_tests.ps1` 可能因虛擬環境路徑不一致導致無法執行 pytest 的問題
-
-### Notes
-- 此版本以 **TWSE only** 為主
-- `dividend_year` 維持民國年
-- `industry` 維持來源代碼
-- 此版重點在於：
-  - 先把 **資料抓取、SQLite、API、測試、PowerShell 工具鏈** 打通
-  - 尚未正式進入 TPEx 雙市場功能實作
+### Frontend
+- 新增 `/admin/refresh-logs` 頁
+- 顯示 refresh logs 表格
+- 支援簡單分頁
 
 ---
 
-## [v0.1.x] - Historical / Pre-baseline
+## v0.3.1
 
-### Notes
-- 早期規劃階段與原型階段
-- 主要完成：
-  - 名詞定義
-  - SQLite MVP 架構設計
-  - 資料來源評估
-  - API / DB / 專案結構規格草案
-- 未作為穩定可執行基線版本
+### 主題
+資料品質與 CI 基礎
+
+### Added
+- 新增 `industry_name`
+- 新增 `dividend_year_ad`
+- 新增 GitHub Actions 基本 CI 流程
 
 ---
 
-# Tag / Branch 建議
+## Frontend MVP Milestone
 
-## 建議目前 Git tag
-若你要先標記第三版測試完成但尚未完成人工 smoke 驗證的狀態，建議：
+### 使用者頁
+- `/stocks`
+- `/dividends`
+- `/stocks/:stockCode/dividends`
 
-```bash
-git add .
-git commit -m "feat: complete v0.3.0-beta.1 dual-market stock and dividend support"
-git tag v0.3.0-beta.1
+### 管理頁
+- `/admin/refresh-logs`
+- `/admin/scheduler`
+
+### Frontend Capabilities
+- React + Vite + TypeScript
+- React Router
+- 使用者頁 / 管理頁骨架完成
+- URL query params 同步
+- 股利分頁
+- 個股股利導流
+
+---
+
+## Notes
+
+- 前端資料來源為本地 API，不直接查外部資料源
+- 第一次使用前，需先透過 refresh APIs 初始化本地 DB
