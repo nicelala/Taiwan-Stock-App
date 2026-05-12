@@ -20,6 +20,7 @@ from app.db.init_db import init_db
 from app.db.session import SessionLocal, engine
 from app.models.stock_basic import StockBasic
 from app.models.dividend_history import DividendHistory
+from app.models.refresh_job_log import RefreshJobLog
 
 
 def _safe_remove_db_file(path: Path, retries: int = 5, delay: float = 0.2) -> None:
@@ -70,6 +71,7 @@ def clean_tables():
     """
     db = SessionLocal()
     try:
+        db.query(RefreshJobLog).delete()
         db.query(DividendHistory).delete()
         db.query(StockBasic).delete()
         db.commit()

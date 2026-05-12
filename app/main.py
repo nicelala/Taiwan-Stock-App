@@ -5,7 +5,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes import router
 from app.db.init_db import init_db
-
+from app.scheduler import start_scheduler, shutdown_scheduler
+from fastapi.middleware.cors import CORSMiddleware
 
 class UTF8JSONResponse(JSONResponse):
     media_type = "application/json; charset=utf-8"
@@ -15,8 +16,15 @@ class UTF8JSONResponse(JSONResponse):
 async def lifespan(app: FastAPI):
     # 啟動時初始化 DB
     init_db()
+
+    # 啟動 scheduler（若 settings.enable_scheduler=False，會直接略過）
+    scheduler = start_scheduler()
+    app.state.scheduler = scheduler
+
     yield
-    # 目前不需要額外 shutdown 清理邏輯
+
+    # 關閉 scheduler
+    shutdown_scheduler(getattr(app.state, "scheduler", None))
 
 
 app = FastAPI(
@@ -27,6 +35,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.middleware("http")
 async def force_utf8_json_charset(request: Request, call_next):

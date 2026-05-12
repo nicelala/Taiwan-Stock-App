@@ -10,6 +10,7 @@ class DividendItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     dividend_year: int
+    dividend_year_ad: int | None = None
     belongs_to_year_or_period: str | None = None
     period_label: str | None = None
     resolution_status: str | None = None

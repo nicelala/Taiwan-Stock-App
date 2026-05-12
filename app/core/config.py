@@ -15,5 +15,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    enable_scheduler: bool = False
+
+    scheduler_stocks_hour: int = 6
+    scheduler_stocks_minute: int = 0
+
+    scheduler_dividends_hour: int = 6
+    scheduler_dividends_minute: int = 10
 
 settings = Settings()

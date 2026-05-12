@@ -5,8 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.crawlers.twse_client import TWSEClient
 from app.crawlers.tpex_client import TPExClient
-from app.core.utils import parse_date, parse_decimal, fix_mojibake, get_first
+from app.core.utils import (
+    parse_date,
+    parse_decimal,
+    fix_mojibake,
+    get_first,
+    get_industry_name,
+)
 from app.repositories.stock_repository import StockRepository
+from app.repositories.refresh_job_log_repository import RefreshJobLogRepository
 
 
 class StockService:
@@ -15,54 +22,102 @@ class StockService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.repo = StockRepository(db)
+        self.log_repo = RefreshJobLogRepository(db)
         self.twse_client = TWSEClient()
         self.tpex_client = TPExClient()
 
+    
+    
     def get_stock(self, stock_code: str, market: str | None = None):
-        """
-        market 指定時：只查單一市場
-        market=None 時：
-            - 若只找到一筆，直接回傳
-            - 若找到多筆（跨市場重碼），拋 ValueError
-            - 若找不到，回 None
-        """
-        if market is not None:
-            market = market.upper()
-            self._validate_market(market)
-            return self.repo.get_by_code(stock_code, market)
+        normalized_market = self._normalize_market(market)
+        result = self.repo.get_by_code(stock_code=stock_code, market=normalized_market)
 
-        matches = self.repo.list_by_code(stock_code)
+        if normalized_market is not None:
+            return result
 
-        if len(matches) == 1:
-            return matches[0]
-
-        if len(matches) > 1:
+        if isinstance(result, list):
+            if len(result) == 0:
+                return None
+            if len(result) == 1:
+                return result[0]
             raise ValueError("MULTIPLE_MARKET_MATCH")
 
-        return None
+        return result
 
-    def sync_from_source(self, market: str) -> dict:
-        market = market.upper()
-        self._validate_market(market)
+    def search(
+        self,
+        q: str,
+        market: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ):
+        normalized_market = self._normalize_market(market)
+        normalized_limit = self._normalize_limit(limit)
+        normalized_offset = self._normalize_offset(offset)
 
-        rows = self._fetch_stock_rows(market)
-        inserted_or_updated = 0
+        rows, total_count = self.repo.search(
+            q=q,
+            market=normalized_market,
+            limit=normalized_limit,
+            offset=normalized_offset,
+        )
 
-        for raw in rows:
-            payload = self._normalize_stock_row(raw, market)
-            if payload["stock_code"] is None:
-                continue
+        items = []
+        for stock in rows:
+            items.append(
+                {
+                    "stock_code": stock.stock_code,
+                    "market": stock.market,
+                    "company_name": stock.company_name,
+                    "company_short_name": stock.company_short_name,
+                    "industry": stock.industry,
+                    "industry_name": get_industry_name(stock.industry),
+                    "listing_date": stock.listing_date,
+                }
+            )
 
-            self.repo.upsert_one(payload)
-            inserted_or_updated += 1
+        return items, total_count
 
-        self.db.commit()
+    def sync_from_source(self, market: str, trigger_source: str = "api") -> dict:
+        market_text = str(market or "").strip().upper()
+        log = self.log_repo.create_running(
+            job_name="refresh_stocks",
+            market=market_text or "UNKNOWN",
+            trigger_source=trigger_source,
+        )
 
-        return {
-            "status": "success",
-            "market": market,
-            "count": inserted_or_updated,
-        }
+        try:
+            self._validate_market(market_text)
+
+            rows = self._fetch_stock_rows(market_text)
+            inserted_or_updated = 0
+
+            for raw in rows:
+                payload = self._normalize_stock_row(raw, market_text)
+                if payload["stock_code"] is None:
+                    continue
+
+                self.repo.upsert_one(payload)
+                inserted_or_updated += 1
+
+            self.db.commit()
+
+            self.log_repo.mark_success(
+                log_id=log.id,
+                inserted_or_updated_count=inserted_or_updated,
+                skipped_count=0,
+            )
+
+            return {
+                "status": "success",
+                "market": market_text,
+                "count": inserted_or_updated,
+            }
+
+        except Exception as exc:
+            self.db.rollback()
+            self.log_repo.mark_failed(log.id, str(exc))
+            raise
 
     def sync_one_if_missing(self, stock_code: str, market: str | None = None):
         """
@@ -74,12 +129,12 @@ class StockService:
 
             obj = self.repo.get_by_code(stock_code, market)
             if obj:
-                return obj
+                return self._attach_derived_fields(obj)
 
             self.sync_from_source(market)
-            return self.repo.get_by_code(stock_code, market)
+            obj = self.repo.get_by_code(stock_code, market)
+            return self._attach_derived_fields(obj)
 
-        # market 未指定：先看 local DB 是否已有單一明確結果
         obj = self.get_stock(stock_code, None)
         if obj:
             return obj
@@ -101,7 +156,7 @@ class StockService:
         if market not in self.VALID_MARKETS:
             raise ValueError("INVALID_MARKET")
 
-    def _fetch_stock_rows(self, market: str) -> list[dict]:
+    def _fetch_stock_rows(self, market: str) -> list:
         if market == "TWSE":
             return self.twse_client.fetch_stock_basic_all()
         if market == "TPEX":
@@ -143,3 +198,56 @@ class StockService:
             "source_name": f"{market}_OPEN_DATA",
             "source_url": source_url,
         }
+
+    def _attach_derived_fields(self, obj):
+        """
+        不改 DB schema，僅在回傳 ORM 物件前補上衍生欄位。
+        """
+        if obj is None:
+            return None
+
+        obj.industry_name = get_industry_name(obj.industry)
+        return obj
+    
+    
+    def _normalize_market(self, market: str | None) -> str | None:
+            if market is None:
+                return None
+
+            text = str(market).strip().upper()
+            if text not in self.VALID_MARKETS:
+                raise ValueError("INVALID_MARKET")
+
+            return text
+
+    def _normalize_limit(self, limit: int | None) -> int:
+        if limit is None:
+            return 20
+
+        try:
+            value = int(limit)
+        except Exception:
+            return 20
+
+        if value < 1:
+            return 1
+
+        if value > 100:
+            return 100
+
+        return value
+
+    def _normalize_offset(self, offset: int | None) -> int:
+        if offset is None:
+            return 0
+
+        try:
+            value = int(offset)
+        except Exception:
+            return 0
+
+        if value < 0:
+            return 0
+
+        return value
+
