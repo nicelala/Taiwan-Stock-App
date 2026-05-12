@@ -6,4 +6,5 @@ pydantic-settings==2.10.1
 python-dotenv==1.1.1
 requests==2.32.5
 pytest==8.4.1
-httpx
+httpx\APScheduler==3.11.2
+
