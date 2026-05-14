@@ -1,71 +1,140 @@
 from __future__ import annotations
 
-import json
+import csv
+import io
+import logging
+from typing import Any
+
 import requests
 
 from app.core.config import settings
-import logging
-
 
 logger = logging.getLogger(__name__)
+
+
 class TWSEClient:
-    BASE_URL = "https://openapi.twse.com.tw/v1"
+    """
+    TWSE data client.
 
-    STOCK_BASIC_ENDPOINT = "/opendata/t187ap03_L"
-    DIVIDEND_ENDPOINT = "/opendata/t187ap45_L"
+    由於在雲端環境（例如 Render）呼叫 TWSE OpenAPI JSON 端點可能回傳非 JSON 的阻擋頁，
+    這裡將「上市公司基本資料」改為使用 CSV 來源，以提高穩定性。
 
-    def __init__(self) -> None:
-        self.session = requests.Session()
-        self.session.headers.update({
+    CSV 來源（上市公司基本資料）：
+    https://mopsfin.twse.com.tw/opendata/t187ap03_L.csv
+    """
+
+    # 原 JSON 端點（保留常數方便對照/未來回切）
+    STOCK_BASIC_ENDPOINT = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+
+    # 改用 CSV 端點（上市公司基本資料）
+    STOCK_BASIC_CSV_ENDPOINT = "https://mopsfin.twse.com.tw/opendata/t187ap03_L.csv"
+
+    def fetch_stock_basic_all(self) -> list[dict[str, Any]]:
+        """
+        取得上市公司基本資料（TWSE）。
+
+        回傳格式：list[dict]，dict 的 key 為 CSV header（中文欄名），例如：
+        - 公司代號
+        - 公司名稱
+        - 公司簡稱
+        - 產業別
+        - 普通股每股面額
+        - 上市日期
+        - 實收資本額
+        - 已發行普通股數或TDR原股發行股數
+        """
+        return self._get_csv_dict_rows(self.STOCK_BASIC_CSV_ENDPOINT)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _request_get(self, url: str) -> requests.Response:
+        headers = {
             "User-Agent": settings.user_agent,
-            "Accept": "application/json",
-        })
-        self.timeout = settings.request_timeout
+            "Accept": "text/csv,application/csv;q=0.9,*/*;q=0.8",
+        }
+        timeout = getattr(settings, "request_timeout", 20)
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        return resp
 
-    def _get_json(self, endpoint: str) -> list:
-        url = f"{self.BASE_URL}{endpoint}"
-        resp = self.session.get(url, timeout=self.timeout)
-        resp.raise_for_status()
+    def _get_csv_dict_rows(self, url: str) -> list[dict[str, Any]]:
+        resp = self._request_get(url)
 
-        # 明確以 utf-8-sig 解碼，避免 requests 自行猜錯
-        raw_text = resp.content.decode("utf-8-sig", errors="strict")
+        status = resp.status_code
+        content_type = (resp.headers.get("content-type") or "").lower()
 
-        content_type = resp.headers.get("content-type", "")
-        if not raw_text.strip():
+        if status != 200:
+            preview = (resp.text or "")[:200]
             logger.error(
-                "TWSE _get_json got empty body: url=%s status=%s content_type=%s content_len=%s",
+                "TWSE CSV fetch failed: url=%s status=%s content_type=%s preview=%r",
                 url,
-                resp.status_code,
-                content_type,
-                len(resp.content),
-            )
-            raise ValueError(f"TWSE endpoint returned empty body: {url} status={resp.status_code} content_type={content_type}")
-        
-        if "json" not in content_type.lower():
-            preview = raw_text[:200].replace("\n", "\\n").replace("\r", "\\r")
-            logger.error(
-                "TWSE _get_json got non-json response: url=%s status=%s content_type=%s preview=%s",
-                url,
-                resp.status_code,
+                status,
                 content_type,
                 preview,
             )
-            raise ValueError(f"TWSE endpoint returned non-json content: {url} status={resp.status_code} content_type={content_type}")
+            raise ValueError(f"TWSE_CSV_FETCH_FAILED status={status}")
+
+        # 常見情況：CSV 可能帶 BOM，使用 utf-8-sig 可自動去除 BOM
+        raw_bytes = resp.content or b""
+        if not raw_bytes:
+            logger.error(
+                "TWSE CSV fetch returned empty body: url=%s status=%s content_type=%s",
+                url,
+                status,
+                content_type,
+            )
+            raise ValueError("TWSE_CSV_EMPTY_BODY")
+
         try:
-            return json.loads(raw_text)
-        except json.JSONDecodeError:
-            preview = raw_text[:200].replace("\n", "\\n").replace("\r", "\\r")
+            text = raw_bytes.decode("utf-8-sig", errors="replace")
+        except Exception as exc:
+            logger.exception("TWSE CSV decode failed: url=%s err=%s", url, exc)
+            raise ValueError("TWSE_CSV_DECODE_FAILED") from exc
+
+        text_stripped = text.strip()
+        if not text_stripped:
             logger.error(
-                "TWSE _get_json JSON decode failed: url=%s status=%s content_type=%s preview=%s",
+                "TWSE CSV fetch returned blank text: url=%s status=%s content_type=%s",
                 url,
-                resp.status_code,
+                status,
+                content_type,
+            )
+            raise ValueError("TWSE_CSV_BLANK_TEXT")
+
+        # 用 DictReader 直接回傳 dict（key=中文欄名），方便沿用既有 normalize
+        try:
+            f = io.StringIO(text_stripped)
+            reader = csv.DictReader(f)
+            rows: list[dict[str, Any]] = []
+            for row in reader:
+                # csv.DictReader 可能回 None key（格式異常），避免污染
+                if not row:
+                    continue
+                cleaned = {k: v for k, v in row.items() if k is not None}
+                rows.append(cleaned)
+
+        except Exception as exc:
+            preview = text_stripped[:200]
+            logger.exception(
+                "TWSE CSV parse failed: url=%s status=%s content_type=%s preview=%r err=%s",
+                url,
+                status,
+                content_type,
+                preview,
+                exc,
+            )
+            raise ValueError("TWSE_CSV_PARSE_FAILED") from exc
+
+        if not rows:
+            # 不直接 raise，讓上層看 count=0，並在 log 留線索
+            preview = text_stripped[:200]
+            logger.warning(
+                "TWSE CSV parsed 0 rows: url=%s status=%s content_type=%s preview=%r",
+                url,
+                status,
                 content_type,
                 preview,
             )
-            raise
 
-    def fetch_stock_basic_all(self) -> list:
-        return self._get_json(self.STOCK_BASIC_ENDPOINT)
-
-    def fetch_dividend_all(self) -> list:
-        return self._get_json(self.DIVIDEND_ENDPOINT)
+        return rows
