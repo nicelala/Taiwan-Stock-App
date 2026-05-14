@@ -1,8 +1,6 @@
 import type { CSSProperties } from "react";
 import type { SchedulerJobItem } from "../types/scheduler";
 
-type ActionType = "pause" | "resume" | "run-now";
-
 type SchedulerJobCardProps = {
   job: SchedulerJobItem;
   actionLoadingKey: string | null;
