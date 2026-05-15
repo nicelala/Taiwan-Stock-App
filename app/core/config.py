@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     enable_scheduler: bool = False
-
+    admin_token: str | None = None
     scheduler_stocks_hour: int = 6
     scheduler_stocks_minute: int = 0
 
