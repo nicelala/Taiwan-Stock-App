@@ -580,6 +580,125 @@ def refresh_stock_basic(
 
     return result
 
+@router.post("/admin/import/stocks")
+def import_stocks_csv(
+    market: str = Query(..., description="TWSE or TPEX"),
+    file: UploadFile = File(...),
+    x_admin_token: str | None = Header(default=None, alias="X-ADMIN-TOKEN"),
+    db: Session = Depends(get_db),
+):
+    # --- auth ---
+    if settings.admin_token is None:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "ADMIN_TOKEN_NOT_SET",
+                "message": "ADMIN_TOKEN is not configured on server",
+            },
+        )
+
+    if x_admin_token != settings.admin_token:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "UNAUTHORIZED",
+                "message": "invalid admin token",
+            },
+        )
+
+    # --- validate market ---
+    market_text = str(market or "").strip().upper()
+    if market_text not in {"TWSE", "TPEX"}:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_MARKET",
+                "message": "market must be TWSE or TPEX",
+            },
+        )
+
+    # --- read file ---
+    raw = file.file.read()
+    if not raw:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "EMPTY_FILE",
+                "message": "uploaded file is empty",
+            },
+        )
+
+    # 支援 BOM 的 utf-8-sig；若不是 utf-8 也會用 replace 先保命
+    text = raw.decode("utf-8-sig", errors="replace").strip()
+    if not text:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "EMPTY_FILE_TEXT",
+                "message": "uploaded file has no readable text",
+            },
+        )
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    def pick(row: dict, *keys: str):
+        for k in keys:
+            if k in row and row[k] is not None and str(row[k]).strip() != "":
+                return row[k]
+        return None
+
+    repo = StockRepository(db)
+
+    inserted_or_updated = 0
+    skipped = 0
+
+    for row in reader:
+        # 允許兩種 header：中文或 API keys
+        stock_code = pick(row, "公司代號", "stock_code")
+        company_name = pick(row, "公司名稱", "company_name")
+        company_short_name = pick(row, "公司簡稱", "company_short_name")
+        industry = pick(row, "產業別", "industry")
+        listing_date_raw = pick(row, "上市日期", "上櫃日期", "listing_date")
+
+        stock_code = str(stock_code or "").strip() or None
+        if stock_code is None:
+            skipped += 1
+            continue
+
+        company_name = fix_mojibake(company_name) or ""
+        company_short_name = fix_mojibake(company_short_name)
+        industry = str(industry or "").strip() or None
+        listing_date = parse_date(listing_date_raw)
+
+        payload = {
+            "stock_code": stock_code,
+            "market": market_text,
+            "company_name": company_name,
+            "company_short_name": company_short_name,
+            "industry": industry,
+
+            # Q2=B：最小欄位，其餘欄位維持 None
+            "par_value": None,
+            "capital_amount": None,
+            "issued_common_shares": None,
+            "listing_date": listing_date,
+
+            # 來源欄位
+            "source_name": f"IMPORT_{market_text}",
+            "source_url": "local_import",
+        }
+
+        repo.upsert_one(payload)
+        inserted_or_updated += 1
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "market": market_text,
+        "count": inserted_or_updated,
+        "skipped": skipped,
+    }
 
 @router.post("/admin/refresh/dividends")
 def refresh_dividends(
