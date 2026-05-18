@@ -138,12 +138,17 @@ class DividendService:
 
         raise ValueError("STOCK_NOT_FOUND")
 
-    def _fetch_dividend_rows(self, market: str) -> list:
-        if market == "TWSE":
-            return self.twse_client.fetch_dividend_all()
-        if market == "TPEX":
+    def _fetch_dividend_rows(self, market_text: str):
+
+        if market_text == "TWSE":
+            # ✅ 關閉 TWSE（避免 crash）
+            return []
+
+        if market_text == "TPEX":
             return self.tpex_client.fetch_dividend_all()
+
         raise ValueError("INVALID_MARKET")
+
 
     def _normalize_dividend_row(self, raw: dict, market: str) -> dict | None:
         raw_code_name = get_first(raw, "公司代號名稱", "公司代號及名稱")

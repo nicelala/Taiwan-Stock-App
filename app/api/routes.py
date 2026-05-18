@@ -700,6 +700,179 @@ def import_stocks_csv(
         "skipped": skipped,
     }
 
+@router.post("/admin/import/dividends")
+def import_dividends_tsv(
+    file: UploadFile = File(...),
+    x_admin_token: str | None = Header(default=None, alias="X-ADMIN-TOKEN"),
+    db: Session = Depends(get_db),
+):
+    # ===== 1. auth =====
+    if settings.admin_token is None:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "ADMIN_TOKEN_NOT_SET", "message": "ADMIN_TOKEN is not configured on server"},
+        )
+    if x_admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED", "message": "invalid admin token"})
+
+    raw = file.file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_FILE", "message": "uploaded file is empty"})
+
+    text = raw.decode("utf-8-sig", errors="replace")
+    if not text.strip():
+        raise HTTPException(status_code=422, detail={"code": "EMPTY_FILE_TEXT", "message": "uploaded file has no readable text"})
+
+    # ===== 2. delimiter detect =====
+    first_line = text.splitlines()[0]
+    delimiter = "\t" if "\t" in first_line else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+
+    def pick(row: dict, *keys: str):
+        for k in keys:
+            if k in row and row[k] is not None and str(row[k]).strip() != "":
+                return row[k]
+        return None
+
+    def to_decimal(v):
+        try:
+            if v is None:
+                return None
+            s = str(v).strip()
+            if s == "" or s == "-" or s.lower() == "none":
+                return None
+            return Decimal(s)
+        except:
+            return None
+
+    def to_int(v):
+        try:
+            if v is None:
+                return None
+            s = str(v).strip()
+            if s == "":
+                return None
+            return int(s)
+        except:
+            return None
+
+    # ===== 3. 預處理 rows =====
+    rows = [r for r in reader if r]
+    if not rows:
+        return {"status": "success", "count": 0, "skipped": 0, "note": "no rows"}
+
+    years = []
+    for r in rows:
+        y = to_int(pick(r, "股利年度(西元)", "dividend_year"))
+        if y is None:
+            roc = to_int(pick(r, "股利年度(民國)", "roc_year"))
+            if roc is not None:
+                y = roc + 1911
+        if y:
+            years.append(y)
+
+    if not years:
+        return {"status": "success", "count": 0, "skipped": len(rows), "note": "no year found"}
+
+    max_year = max(years)
+    min_year = max_year - 2
+
+    repo = DividendRepository(db)
+
+    imported = 0
+    skipped = 0
+    skipped_no_stock = 0
+    skipped_year = 0
+
+    # ===== 4. 主 loop =====
+    for r in rows:
+
+        try:
+            stock_code = pick(r, "股票代號", "公司代號", "stock_code")
+            market = pick(r, "市場", "market")
+
+            stock_code = str(stock_code or "").strip()
+            market = str(market or "").strip().upper()
+
+            # ✅ 強化判斷（防 dirty data）
+            if not stock_code or market not in ("TWSE", "TPEX"):
+                skipped += 1
+                continue
+
+            # ===== 年度 =====
+            year = to_int(pick(r, "股利年度(西元)", "dividend_year"))
+            if year is None:
+                roc = to_int(pick(r, "股利年度(民國)", "roc_year"))
+                if roc:
+                    year = roc + 1911
+
+            if year is None or year < min_year:
+                skipped += 1
+                skipped_year += 1
+                continue
+
+            # ===== 期別 =====
+            period = pick(r, "期別", "period", "period_label")
+            period = str(period).strip() if period else ""
+
+            # ===== 金額 =====
+            cash = to_decimal(pick(r, "現金股利"))
+            stock = to_decimal(pick(r, "股票股利"))
+            total = to_decimal(pick(r, "總股利"))
+
+            # ===== 找 stock_id =====
+            stock_obj = (
+                db.query(StockBasic)
+                .filter(
+                    StockBasic.stock_code == stock_code,
+                    StockBasic.market == market,
+                )
+                .first()
+            )
+
+            if stock_obj is None:
+                skipped += 1
+                skipped_no_stock += 1
+                continue
+
+            # ===== biz_key =====
+            biz_key = f"{market}:{stock_code}:{year}:{period}"
+
+            payload = {
+                "stock_id": stock_obj.id,
+                "stock_code": stock_code,
+                "market": market,
+                "dividend_year": year,
+                "period_label": period or None,
+                "belongs_to_year_or_period": None,
+                "cash_dividend_per_share": cash,
+                "stock_dividend_per_share": stock,
+                "total_dividend_per_share": total,
+                "source_name": "IMPORT",
+                "source_url": "local_import",
+                "biz_key": biz_key,
+            }
+
+            repo.upsert_one(payload)
+            imported += 1
+
+        except Exception:
+            # ✅ 防止單行炸掉整批
+            skipped += 1
+            continue
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "count": imported,
+        "skipped": skipped,
+        "skipped_no_stock": skipped_no_stock,
+        "skipped_year": skipped_year,
+        "year_range": [min_year, max_year],
+    }
+
+
 @router.post("/admin/refresh/dividends")
 def refresh_dividends(
     market: str = Query(default="TWSE", description="TWSE or TPEX"),
@@ -709,8 +882,14 @@ def refresh_dividends(
     dividend_service = DividendService(db)
 
     try:
+        # ✅ 1. 先確保 stocks 一定存在（避免找不到 stock_id）
         stock_service.sync_from_source(market)
+
+        # ✅ 2. 執行 dividends refresh
         result = dividend_service.sync_from_source(market)
+
+        return result
+
     except ValueError as exc:
         if str(exc) == "INVALID_MARKET":
             raise HTTPException(
@@ -730,7 +909,15 @@ def refresh_dividends(
             )
         raise
 
-    return result
+    except Exception as e:
+        # ✅ 3. 印出完整 traceback（關鍵）
+        import traceback
+
+        return {
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()
+        }
 
 
 @router.get("/admin/refresh/logs", response_model=RefreshJobLogListResponse)
