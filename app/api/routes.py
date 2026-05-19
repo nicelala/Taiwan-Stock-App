@@ -560,26 +560,23 @@ def get_stock_dividends(
 
 
 @router.post("/admin/refresh/stocks")
-def refresh_stock_basic(
-    market: str = Query(default="TWSE", description="TWSE or TPEX"),
+def refresh_stocks(
+    market: str = Query(default="TWSE"),
     db: Session = Depends(get_db),
 ):
-    service = StockService(db)
+    stock_service = StockService(db)
 
     try:
-        result = service.sync_from_source(market)
-    except ValueError as exc:
-        if str(exc) == "INVALID_MARKET":
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "code": "INVALID_MARKET",
-                    "message": "market must be TWSE or TPEX",
-                },
-            )
-        raise
+        result = stock_service.sync_from_source(market)
+        return result
 
-    return result
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()
+        }
 
 @router.post("/admin/import/stocks")
 def import_stocks_csv(
