@@ -60,6 +60,7 @@ REFRESH_LOGS_EXPORT_FIELDS = [
 DIVIDENDS_EXPORT_CSV_MAX = 200_000
 DIVIDENDS_EXPORT_XLSX_MAX = 20_000
 
+
 # 欄位順序：沿用 API 原順序（DividendSearchService._to_response_items 的 dict 插入順序）
 DIVIDENDS_EXPORT_FIELDS = [
     "stock_code",
