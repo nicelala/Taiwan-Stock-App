@@ -735,15 +735,26 @@ def import_dividends_tsv(
         return None
 
     def to_decimal(v):
+        if v is None:
+            return None
+
+        s = str(v).strip()
+
+        if s == "" or s == "-" or s.lower() == "none":
+            return None
+
+        # ✅ 修正：清除亂字元（核心）
+        s = s.replace(",", "").replace("\r", "").replace("\n", "")
+
         try:
-            if v is None:
-                return None
-            s = str(v).strip()
-            if s == "" or s == "-" or s.lower() == "none":
-                return None
             return Decimal(s)
         except:
-            return None
+            try:
+                # ✅ fallback（避免 crash）
+                return Decimal(str(float(s)))
+            except:
+                return None
+
 
     def to_int(v):
         try:
@@ -819,6 +830,11 @@ def import_dividends_tsv(
             cash = to_decimal(pick(r, "現金股利"))
             stock = to_decimal(pick(r, "股票股利"))
             total = to_decimal(pick(r, "總股利"))
+
+            # ✅ 至少一個股利值存在才寫入
+            if cash is None and stock is None and total is None:
+                skipped += 1
+                continue
 
             # ===== 找 stock_id =====
             stock_obj = (
