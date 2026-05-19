@@ -643,10 +643,18 @@ def import_stocks_csv(
     reader = csv.DictReader(io.StringIO(text))
 
     def pick(row: dict, *keys: str):
+        # ✅ 清理 row keys（關鍵）
+        clean_row = {str(k).strip(): v for k, v in row.items() if k}
+
         for k in keys:
-            if k in row and row[k] is not None and str(row[k]).strip() != "":
-                return row[k]
+            key = k.strip()
+            if key in clean_row:
+                val = clean_row[key]
+                if val is not None and str(val).strip() != "":
+                    return str(val).strip()
+
         return None
+
 
     repo = StockRepository(db)
 
