@@ -37,6 +37,7 @@ from openpyxl import Workbook
 from fastapi import File, Header, UploadFile
 from app.repositories.stock_repository import StockRepository
 from app.core.utils import parse_date, fix_mojibake
+from app.models.stock_basic import StockBasic
 
 
 router = APIRouter(prefix="/api/v1")
@@ -734,33 +735,29 @@ def import_dividends_tsv(
     delimiter = "\t" if "\t" in first_line else ","
     reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
 
+    # ✅ 修正：加入與股票匯入相同的 clean_row 欄位去空白防呆
     def pick(row: dict, *keys: str):
+        clean_row = {str(k).strip(): v for k, v in row.items() if k}
         for k in keys:
-            if k in row and row[k] is not None and str(row[k]).strip() != "":
-                return row[k]
+            key = k.strip()
+            if key in clean_row and clean_row[key] is not None and str(clean_row[key]).strip() != "":
+                return str(clean_row[key]).strip()
         return None
 
     def to_decimal(v):
         if v is None:
             return None
-
         s = str(v).strip()
-
         if s == "" or s == "-" or s.lower() == "none":
             return None
-
-        # ✅ 修正：清除亂字元（核心）
         s = s.replace(",", "").replace("\r", "").replace("\n", "")
-
         try:
             return Decimal(s)
         except:
             try:
-                # ✅ fallback（避免 crash）
                 return Decimal(str(float(s)))
             except:
                 return None
-
 
     def to_int(v):
         try:
@@ -781,17 +778,21 @@ def import_dividends_tsv(
     years = []
     for r in rows:
         y = to_int(pick(r, "股利年度(西元)", "dividend_year"))
+        # 💡 選項 B 核心修正：如果本地傳來的值不小心大於 1900（西元），主動轉回民國年
+        if y and y > 1900:
+            y = y - 1911
+            
         if y is None:
             roc = to_int(pick(r, "股利年度(民國)", "roc_year"))
             if roc is not None:
-                y = roc + 1911
+                y = roc
         if y:
             years.append(y)
 
     if not years:
         return {"status": "success", "count": 0, "skipped": len(rows), "note": "no year found"}
 
-    max_year = max(years)
+    max_year = max(years)  # 此時必為民國年，例如 115
     min_year = max_year - 2
 
     repo = DividendRepository(db)
@@ -803,7 +804,6 @@ def import_dividends_tsv(
 
     # ===== 4. 主 loop =====
     for r in rows:
-
         try:
             stock_code = pick(r, "股票代號", "公司代號", "stock_code")
             market = pick(r, "市場", "market")
@@ -811,17 +811,19 @@ def import_dividends_tsv(
             stock_code = str(stock_code or "").strip()
             market = str(market or "").strip().upper()
 
-            # ✅ 強化判斷（防 dirty data）
             if not stock_code or market not in ("TWSE", "TPEX"):
                 skipped += 1
                 continue
 
-            # ===== 年度 =====
+            # ===== 年度（標準化為民國年） =====
             year = to_int(pick(r, "股利年度(西元)", "dividend_year"))
+            if year and year > 1900:
+                year = year - 1911
+                
             if year is None:
                 roc = to_int(pick(r, "股利年度(民國)", "roc_year"))
                 if roc:
-                    year = roc + 1911
+                    year = roc
 
             if year is None or year < min_year:
                 skipped += 1
@@ -837,12 +839,11 @@ def import_dividends_tsv(
             stock = to_decimal(pick(r, "股票股利"))
             total = to_decimal(pick(r, "總股利"))
 
-            # ✅ 至少一個股利值存在才寫入
             if cash is None and stock is None and total is None:
                 skipped += 1
                 continue
 
-            # ===== 找 stock_id =====
+            # ===== 找 stock_id（現在已成功導入 StockBasic，不會再拋出 NameError） =====
             stock_obj = (
                 db.query(StockBasic)
                 .filter(
@@ -862,9 +863,10 @@ def import_dividends_tsv(
 
             payload = {
                 "stock_id": stock_obj.id,
+                "stock_codes": stock_code, # 依照 Repo 預期欄位填寫
                 "stock_code": stock_code,
                 "market": market,
-                "dividend_year": year,
+                "dividend_year": year,  # 儲存民國年（如 115）
                 "period_label": period or None,
                 "belongs_to_year_or_period": None,
                 "cash_dividend_per_share": cash,
@@ -879,7 +881,6 @@ def import_dividends_tsv(
             imported += 1
 
         except Exception:
-            # ✅ 防止單行炸掉整批
             skipped += 1
             continue
 
