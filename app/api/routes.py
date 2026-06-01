@@ -735,7 +735,6 @@ def import_dividends_tsv(
     delimiter = "\t" if "\t" in first_line else ","
     reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
 
-    # ✅ 修正：加入與股票匯入相同的 clean_row 欄位去空白防呆
     def pick(row: dict, *keys: str):
         clean_row = {str(k).strip(): v for k, v in row.items() if k}
         for k in keys:
@@ -778,7 +777,6 @@ def import_dividends_tsv(
     years = []
     for r in rows:
         y = to_int(pick(r, "股利年度(西元)", "dividend_year"))
-        # 💡 選項 B 核心修正：如果本地傳來的值不小心大於 1900（西元），主動轉回民國年
         if y and y > 1900:
             y = y - 1911
             
@@ -792,7 +790,7 @@ def import_dividends_tsv(
     if not years:
         return {"status": "success", "count": 0, "skipped": len(rows), "note": "no year found"}
 
-    max_year = max(years)  # 此時必為民國年，例如 115
+    max_year = max(years)
     min_year = max_year - 2
 
     repo = DividendRepository(db)
@@ -815,7 +813,7 @@ def import_dividends_tsv(
                 skipped += 1
                 continue
 
-            # ===== 年度（標準化為民國年） =====
+            # ===== 年度 =====
             year = to_int(pick(r, "股利年度(西元)", "dividend_year"))
             if year and year > 1900:
                 year = year - 1911
@@ -843,7 +841,7 @@ def import_dividends_tsv(
                 skipped += 1
                 continue
 
-            # ===== 找 stock_id（現在已成功導入 StockBasic，不會再拋出 NameError） =====
+            # ===== 找 stock_id =====
             stock_obj = (
                 db.query(StockBasic)
                 .filter(
@@ -863,10 +861,9 @@ def import_dividends_tsv(
 
             payload = {
                 "stock_id": stock_obj.id,
-                "stock_codes": stock_code, # 依照 Repo 預期欄位填寫
                 "stock_code": stock_code,
                 "market": market,
-                "dividend_year": year,  # 儲存民國年（如 115）
+                "dividend_year": year,
                 "period_label": period or None,
                 "belongs_to_year_or_period": None,
                 "cash_dividend_per_share": cash,
@@ -880,9 +877,20 @@ def import_dividends_tsv(
             repo.upsert_one(payload)
             imported += 1
 
-        except Exception:
-            skipped += 1
-            continue
+        except Exception as e:
+            # 💥 除錯核心：一遇到異常立刻中斷，主動拋出 500 錯誤與詳細軌跡
+            import traceback
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": "DEBUG_UPSERT_FAILED",
+                    "error_message": str(e),
+                    "traceback": traceback.format_exc(),
+                    "attempted_payload": payload if 'payload' in locals() else None,
+                    "raw_row_data": r
+                }
+            )
 
     db.commit()
 
