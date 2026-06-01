@@ -153,8 +153,9 @@ export default function StockDividendsPage() {
             border: "1px solid #e2e8f0",
             boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
             display: "grid",
-            gridTemplateColumns: "220px 220px 140px 140px",
-            gap: "12px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", // ✅ 升級：具備極佳自適應
+            rowGap: "16px",    // ✅ 修正：上下換行時防黏貼
+            columnGap: "12px", // ✅ 修正：欄位橫向舒服留白
             alignItems: "center",
           }}
         >
@@ -297,9 +298,11 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
   fontSize: "14px",
   backgroundColor: "#fff",
+  color: "#0f172a", // ✅ 核心修正：強制深色文字，打字立即可見
 };
 
 const primaryButtonStyle: React.CSSProperties = {
+  width: "100%",
   height: "42px",
   borderRadius: "12px",
   border: "none",
@@ -308,9 +311,11 @@ const primaryButtonStyle: React.CSSProperties = {
   fontSize: "14px",
   cursor: "pointer",
   padding: "0 16px",
+  fontWeight: 600,
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
+  width: "100%",
   height: "42px",
   borderRadius: "12px",
   border: "1px solid #cbd5e1",
@@ -319,6 +324,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontSize: "14px",
   cursor: "pointer",
   padding: "0 16px",
+  fontWeight: 600,
 };
 
 const labelStyle: React.CSSProperties = {

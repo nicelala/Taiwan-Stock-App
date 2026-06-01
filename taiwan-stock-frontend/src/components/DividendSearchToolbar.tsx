@@ -45,9 +45,10 @@ export default function DividendSearchToolbar({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-        gap: "12px",
-        marginBottom: "20px",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        rowGap: "16px",    // ✅ 核心修正：解決上下貼太近的問題
+        columnGap: "16px", // ✅ 核心修正：左右維持完美間隔
+        marginBottom: "4px",
       }}
     >
       <select
@@ -120,7 +121,8 @@ export default function DividendSearchToolbar({
         <option value="asc">由小到大</option>
       </select>
 
-      <div style={{ display: "flex", gap: "12px" }}>
+      {/* ✅ 按鈕包裹容器：加入 padding-top 與 flex 架構，防爆也防黏貼 */}
+      <div style={{ display: "flex", gap: "12px", width: "100%" }}>
         <button onClick={onSearch} disabled={loading} style={primaryButtonStyle}>
           {loading ? "查詢中..." : "套用條件"}
         </button>
@@ -142,9 +144,11 @@ const inputStyle = {
   outline: "none",
   fontSize: "14px",
   backgroundColor: "#fff",
+  color: "#0f172a", // ✅ 核心修正：強制文字為深色，解決打字白字看不到的問題
 };
 
 const primaryButtonStyle = {
+  flex: 1,
   height: "42px",
   borderRadius: "12px",
   border: "none",
@@ -153,9 +157,11 @@ const primaryButtonStyle = {
   fontSize: "14px",
   cursor: "pointer",
   padding: "0 16px",
+  fontWeight: 600,
 };
 
 const secondaryButtonStyle = {
+  flex: 1,
   height: "42px",
   borderRadius: "12px",
   border: "1px solid #cbd5e1",
@@ -164,4 +170,5 @@ const secondaryButtonStyle = {
   fontSize: "14px",
   cursor: "pointer",
   padding: "0 16px",
+  fontWeight: 600,
 };
