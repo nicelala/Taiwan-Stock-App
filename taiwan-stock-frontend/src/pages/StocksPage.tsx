@@ -262,7 +262,7 @@ export default function StocksPage() {
 
         <div
           style={{
-            marginBottom: "20px",
+            marginBottom: "24px", // ✅ 調整為與上方卡片對齊的一致間距
             padding: "20px",
             borderRadius: "20px",
             backgroundColor: "#fff",
@@ -283,7 +283,7 @@ export default function StocksPage() {
 
         <div
           style={{
-            marginBottom: "16px",
+            marginBottom: "20px", // ✅ 加大卡片間距呼吸感
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -303,11 +303,11 @@ export default function StocksPage() {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "12px",
+              gap: "12px", // ✅ 修正：打通分頁元件群的橫向精美間距
               flexWrap: "wrap",
             }}
           >
-            <span>每頁筆數</span>
+            <span style={{ color: "#64748b", fontWeight: 500 }}>每頁筆數</span>
 
             <select
               value={pageSize}
@@ -356,6 +356,10 @@ const selectStyle: React.CSSProperties = {
   border: "1px solid #cbd5e1",
   padding: "0 12px",
   backgroundColor: "#fff",
+  color: "#0f172a", // ✅ 核心修正：強制每頁筆數下拉選單為深色文字，消除白字隱形現象
+  fontSize: "14px",
+  outline: "none",
+  cursor: "pointer",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
@@ -367,6 +371,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontSize: "14px",
   cursor: "pointer",
   padding: "0 16px",
+  fontWeight: 600,
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
@@ -378,4 +383,5 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontSize: "14px",
   cursor: "pointer",
   padding: "0 16px",
+  fontWeight: 600,
 };
